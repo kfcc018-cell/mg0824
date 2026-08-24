@@ -80,7 +80,8 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">해당 월</label>
+                        <!-- ★ 수정됨: 해당 월 -> 해당 일자, input type="month" -> "date" -->
+                        <label class="block text-sm font-medium text-gray-700">해당 일자</label>
                         <input type="date" id="date" class="mt-1 block w-full rounded-md border-gray-300 border p-2 focus:ring-blue-500 focus:border-blue-500" required>
                     </div>
                     <div>
@@ -128,7 +129,7 @@
             </div>
         </div>
 
-        <!-- Section 2: Dashboard (Hidden by default) -->
+        <!-- Section 2: Dashboard -->
         <div id="section-dashboard" class="hidden space-y-8">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="card p-6 bg-blue-50">
@@ -136,7 +137,7 @@
                     <h3 id="stat-total" class="text-3xl font-bold text-blue-900 mt-1">0원</h3>
                 </div>
                 <div class="card p-6 bg-green-50">
-                    <p class="text-sm text-green-600 font-semibold">이번 달 최대 사용 항목</p>
+                    <p class="text-sm text-green-600 font-semibold">최대 사용 항목</p>
                     <h3 id="stat-top-category" class="text-xl font-bold text-green-900 mt-1">-</h3>
                 </div>
                 <div class="card p-6 bg-purple-50">
@@ -186,17 +187,12 @@
     </div>
 
     <script>
-        // ==========================================
-        // ⚠️ 주의: 아래 SCRIPT_URL을 본인의 앱스 스크립트 웹앱 URL로 변경해야 합니다!
-        // ==========================================
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzuapM58C81G_TtUoTQ_C_WoNSlIegdC46ZbsSKLAG1BBYLwwaAKLIEWCwmg9YHrzD7ow/exec'; 
         
-        // State Management
-        let budgetData = []; // 초기값은 빈 배열, DB에서 로드
+        let budgetData = []; 
         let categoryChart = null;
         let memberChart = null;
 
-        // UI Helpers
         function showLoading(text = '처리 중...') {
             document.getElementById('loadingText').innerText = text;
             document.getElementById('loadingOverlay').style.display = 'flex';
@@ -206,7 +202,6 @@
             document.getElementById('loadingOverlay').style.display = 'none';
         }
 
-        // Custom Alert Controls
         function showAlert(title, msg) {
             document.getElementById('alertTitle').innerText = title;
             document.getElementById('alertMsg').innerText = msg;
@@ -217,7 +212,6 @@
             document.getElementById('customAlert').classList.add('hidden');
         }
 
-        // Fetch data from Google Sheets API
         async function fetchData() {
             if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE') {
                 showAlert('설정 오류', 'Google Apps Script URL이 설정되지 않았습니다. 코드에서 SCRIPT_URL을 변경해주세요.');
@@ -232,11 +226,11 @@
                 const result = await response.json();
                 
                 if (result.status === 'success') {
-                    // 데이터 형식을 기존 앱에 맞게 변환
+                    // ★ 수정됨: date 파라미터 매핑 추가 (앱스스크립트가 month를 반환하든 date를 반환하든 호환되게 처리)
                     budgetData = result.data.map(row => ({
-                        id: row.id || Date.now(), // id가 없으면 생성
+                        id: row.id || Date.now(),
                         member: row.member,
-                        month: row.month,
+                        date: row.date || row.month, // 날짜 정보 저장
                         category: row.category,
                         amount: parseInt(row.amount)
                     }));
@@ -255,7 +249,6 @@
             }
         }
 
-        // Tab Switching
         function switchTab(tab) {
             const sections = ['input', 'dashboard'];
             sections.forEach(s => {
@@ -272,7 +265,6 @@
             }
         }
 
-        // Form Submission (Add Data via API)
         document.getElementById('budgetForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -284,7 +276,7 @@
             const newEntry = {
                 id: Date.now().toString(),
                 member: document.getElementById('member').value,
-                month: document.getElementById('month').value,
+                date: document.getElementById('date').value, // ★ YYYY-MM-DD 형식으로 가져옴
                 category: document.getElementById('category').value,
                 amount: document.getElementById('amount').value
             };
@@ -292,12 +284,13 @@
             showLoading('데이터를 저장하는 중입니다...');
             
             try {
-                // URLSearchParams를 사용하여 form 데이터 전송 (CORS 이슈 회피를 위해 POST 대신 GET 파라미터 또는 FormData 사용, 앱스 스크립트는 FormData를 POST로 받는 것이 안정적)
                 const formData = new FormData();
                 formData.append('action', 'insert');
                 formData.append('id', newEntry.id);
                 formData.append('member', newEntry.member);
-                formData.append('month', newEntry.month);
+                // ★ 앱스스크립트 호환성을 위해 month 변수명으로 날짜(YYYY-MM-DD) 데이터를 보냅니다.
+                formData.append('month', newEntry.date);
+                formData.append('date', newEntry.date); 
                 formData.append('category', newEntry.category);
                 formData.append('amount', newEntry.amount);
 
@@ -309,14 +302,14 @@
                 const result = await response.json();
 
                 if(result.status === 'success') {
-                    // 성공 시 로컬 데이터 업데이트 및 UI 갱신
-                    newEntry.amount = parseInt(newEntry.amount); // 로컬에선 숫자로 저장
+                    newEntry.amount = parseInt(newEntry.amount); 
                     budgetData.unshift(newEntry);
                     renderHistory();
                     this.reset();
-                    // 현재 달로 다시 세팅
+                    
+                    // ★ 입력 후 오늘 날짜로 다시 세팅 (YYYY-MM-DD)
                     const now = new Date();
-                    document.getElementById('month').value = now.toISOString().substring(0, 7);
+                    document.getElementById('date').value = now.toISOString().substring(0, 10);
                     showAlert('성공', '예산 데이터가 성공적으로 저장되었습니다.');
                 } else {
                     showAlert('저장 실패', result.message);
@@ -394,7 +387,7 @@
             const body = document.getElementById('historyBody');
             body.innerHTML = budgetData.map(item => `
                 <tr class="hover:bg-gray-50 transition-colors">
-                    <td class="px-4 py-3 text-sm text-gray-600">${item.month}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${item.date}</td>
                     <td class="px-4 py-3 text-sm font-semibold text-gray-800">${item.member}</td>
                     <td class="px-4 py-3 text-sm">
                         <span class="px-2 py-1 rounded-full text-xs font-medium 
@@ -415,13 +408,11 @@
             }
         }
 
-        // Dashboard Logic
         function updateDashboard() {
             const total = budgetData.reduce((acc, curr) => acc + curr.amount, 0);
             document.getElementById('stat-total').innerText = total.toLocaleString() + '원';
             document.getElementById('stat-count').innerText = budgetData.length + '건';
 
-            // Category aggregation
             const catMap = budgetData.reduce((acc, curr) => {
                 acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
                 return acc;
@@ -430,7 +421,6 @@
             const topCategory = Object.keys(catMap).reduce((a, b) => catMap[a] > catMap[b] ? a : b, '-');
             document.getElementById('stat-top-category').innerText = topCategory !== '-' ? `${topCategory} (${catMap[topCategory].toLocaleString()}원)` : '-';
 
-            // Charts
             renderCharts(catMap);
             renderSummaryTable();
         }
@@ -439,11 +429,9 @@
             const catCtx = document.getElementById('categoryChart').getContext('2d');
             const memCtx = document.getElementById('memberChart').getContext('2d');
 
-            // Destroy existing charts if they exist
             if(categoryChart) categoryChart.destroy();
             if(memberChart) memberChart.destroy();
 
-            // Category Chart (Doughnut)
             categoryChart = new Chart(catCtx, {
                 type: 'doughnut',
                 data: {
@@ -457,7 +445,6 @@
                 options: { responsive: true, cutout: '70%' }
             });
 
-            // Member Chart (Bar)
             const memMap = budgetData.reduce((acc, curr) => {
                 acc[curr.member] = (acc[curr.member] || 0) + curr.amount;
                 return acc;
@@ -484,16 +471,17 @@
             const tableBody = document.getElementById('summaryTableBody');
             const monthlyData = {};
 
-            // Grouping data by month and category
+            // ★ 수정됨: YYYY-MM-DD 형식에서 앞 7자리(YYYY-MM)만 잘라서 월별 그룹핑이 정상적으로 되도록 수정
             budgetData.forEach(item => {
-                if(!monthlyData[item.month]) {
-                    monthlyData[item.month] = { '수선유지비': 0, '비품': 0, '개량공사': 0, total: 0 };
+                const monthKey = item.date ? item.date.substring(0, 7) : '-'; // "YYYY-MM" 추출
+                
+                if(!monthlyData[monthKey]) {
+                    monthlyData[monthKey] = { '수선유지비': 0, '비품': 0, '개량공사': 0, total: 0 };
                 }
-                monthlyData[item.month][item.category] += item.amount;
-                monthlyData[item.month].total += item.amount;
+                monthlyData[monthKey][item.category] += item.amount;
+                monthlyData[monthKey].total += item.amount;
             });
 
-            // Sorting months descending
             const sortedMonths = Object.keys(monthlyData).sort((a, b) => b.localeCompare(a));
 
             tableBody.innerHTML = sortedMonths.map(month => {
@@ -514,27 +502,14 @@
             }
         }
 
-        // Custom Alert Controls
-        function showAlert(title, msg) {
-            document.getElementById('alertTitle').innerText = title;
-            document.getElementById('alertMsg').innerText = msg;
-            document.getElementById('customAlert').classList.remove('hidden');
-        }
-
-        function closeAlert() {
-            document.getElementById('customAlert').classList.add('hidden');
-        }
-
-        // Initial Load
         window.onload = function() {
-            // Set current month as default
+            // ★ 수정됨: 앱 접속 시 오늘 날짜(YYYY-MM-DD)로 기본 설정되도록 변경
             const now = new Date();
-            const monthStr = now.toISOString().substring(0, 7);
-            document.getElementById('month').value = monthStr;
+            const dateStr = now.toISOString().substring(0, 10);
+            document.getElementById('date').value = dateStr;
             
-            // 앱스 스크립트에서 데이터 불러오기
             fetchData();
         }
     </script>
 </body>
-</html>```
+</html>
